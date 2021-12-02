@@ -1,26 +1,63 @@
 use cosmwasm_std::{
-    debug_print, to_binary, Api, Binary, Env, Extern, HandleResponse, InitResponse, Querier,
-    StdError, StdResult, Storage,
+    from_binary, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse,
+    Querier, StdError, StdResult, Storage, Uint128,
+};
+use secret_toolkit::storage::{TypedStore, TypedStoreMut};
+use secret_toolkit::utils::InitCallback;
+use secret_toolkit::{crypto::sha_256, snip20::register_receive_msg};
+
+use crate::msg::{HandleAnswer, QueryAnswer, ResponseStatus};
+use crate::{
+    msg::{HandleMsg, InitMsg, QueryMsg},
+    state::Config,
 };
 
-use crate::msg::{CountResponse, HandleMsg, InitMsg, QueryMsg};
-use crate::state::{config, config_read, State};
+pub const BLOCK_SIZE: usize = 256;
+
+pub const ADDITIONAL_ENTROPY: &[u8] = b"additional_entropy";
+pub const CONFIG_KEY: &[u8] = b"config";
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
-    let state = State {
-        count: msg.count,
-        owner: deps.api.canonical_address(&env.message.sender)?,
-    };
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let prng_seed_hashed = sha_256(&msg.prng_seed.0);
 
-    config(&mut deps.storage).save(&state)?;
+    let mut admin = env.message.sender;
 
-    debug_print!("Contract was initialized by {}", env.message.sender);
+    if msg.admin.is_some() {
+        admin = msg.admin.unwrap();
+    }
 
-    Ok(InitResponse::default())
+    config_store.store(
+        CONFIG_KEY,
+        &Config {
+            admin,
+            token_contract: msg.token_contract.clone(),
+            prng_seed: prng_seed_hashed.to_vec(),
+            mint_started: false,
+            mint_price: msg.mint_price.clone(),
+            mint_limit: msg.mint_limit.clone(),
+        },
+    )?;
+
+    let additional_entropy = (0..1000).map(|_| "0").collect::<Vec<_>>().concat();
+
+    let mut additional_entropy_store = TypedStoreMut::attach(&mut deps.storage);
+    additional_entropy_store.store(ADDITIONAL_ENTROPY, &additional_entropy.to_string())?;
+
+    Ok(InitResponse {
+        messages: vec![register_receive_msg(
+            env.contract_code_hash.clone(),
+            None,
+            1,
+            msg.token_contract.contract_hash.clone(),
+            msg.token_contract.address.clone(),
+        )?],
+        log: vec![],
+    })
 }
 
 pub fn handle<S: Storage, A: Api, Q: Querier>(
@@ -29,40 +66,87 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        HandleMsg::Increment {} => try_increment(deps, env),
-        HandleMsg::Reset { count } => try_reset(deps, env, count),
+        HandleMsg::Receive {
+            sender,
+            from,
+            amount,
+            msg,
+        } => try_receive(deps, env, sender, from, amount, msg),
+
+        HandleMsg::StartMint {} => start_mint(deps, env),
+        _ => Err(StdError::generic_err("action not found!")),
     }
 }
 
-pub fn try_increment<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    _env: Env,
-) -> StdResult<HandleResponse> {
-    config(&mut deps.storage).update(|mut state| {
-        state.count += 1;
-        debug_print!("count = {}", state.count);
-        Ok(state)
-    })?;
-
-    debug_print("count incremented successfully");
-    Ok(HandleResponse::default())
-}
-
-pub fn try_reset<S: Storage, A: Api, Q: Querier>(
+pub fn start_mint<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    count: i32,
 ) -> StdResult<HandleResponse> {
-    let sender_address_raw = deps.api.canonical_address(&env.message.sender)?;
-    config(&mut deps.storage).update(|mut state| {
-        if sender_address_raw != state.owner {
-            return Err(StdError::Unauthorized { backtrace: None });
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut config: Config = config_store.load(CONFIG_KEY)?;
+
+    if env.message.sender != config.admin {
+        return Err(StdError::generic_err(format!(
+            "Only admin can execute this action!"
+        )));
+    }
+
+    config.mint_started = true;
+
+    config_store.store(CONFIG_KEY, &config)?;
+
+    return Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::StartMint {
+            status: ResponseStatus::Success,
+        })?),
+    });
+}
+
+pub fn try_receive<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    _sender: HumanAddr,
+    from: HumanAddr,
+    amount: Uint128,
+    msg: Binary,
+) -> StdResult<HandleResponse> {
+    let config = TypedStore::<Config, S>::attach(&deps.storage).load(CONFIG_KEY)?;
+    let msg: HandleMsg = from_binary(&msg)?;
+    if let HandleMsg::MintNfts { count, entropy } = msg.clone() {
+        if env.message.sender != config.token_contract.address {
+            return Err(StdError::generic_err(format!("Invalid token sent!")));
+        } else {
+            return mint_nfts(deps, env.clone(), amount, from, count, entropy);
         }
-        state.count = count;
-        Ok(state)
-    })?;
-    debug_print("count reset successfully");
-    Ok(HandleResponse::default())
+    } else {
+        return Err(StdError::generic_err(format!("Receive handler not found!")));
+    }
+}
+
+pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    amount: Uint128,
+    from: HumanAddr,
+    count: u32,
+    entropy: String,
+) -> StdResult<HandleResponse> {
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut config: Config = config_store.load(CONFIG_KEY)?;
+
+    if config.mint_started != true {
+        return Err(StdError::generic_err(format!("Mint has not started yet!")));
+    }
+
+    return Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::MintNfts {
+            status: ResponseStatus::Success,
+        })?),
+    });
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
@@ -70,82 +154,13 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     msg: QueryMsg,
 ) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetCount {} => to_binary(&query_count(deps)?),
+        QueryMsg::Info {} => query_info(deps),
     }
 }
 
-fn query_count<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<CountResponse> {
-    let state = config_read(&deps.storage).load()?;
-    Ok(CountResponse { count: state.count })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use cosmwasm_std::testing::{mock_dependencies, mock_env};
-    use cosmwasm_std::{coins, from_binary, StdError};
-
-    #[test]
-    fn proper_initialization() {
-        let mut deps = mock_dependencies(20, &[]);
-
-        let msg = InitMsg { count: 17 };
-        let env = mock_env("creator", &coins(1000, "earth"));
-
-        // we can just call .unwrap() to assert this was a success
-        let res = init(&mut deps, env, msg).unwrap();
-        assert_eq!(0, res.messages.len());
-
-        // it worked, let's query the state
-        let res = query(&deps, QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(17, value.count);
-    }
-
-    #[test]
-    fn increment() {
-        let mut deps = mock_dependencies(20, &coins(2, "token"));
-
-        let msg = InitMsg { count: 17 };
-        let env = mock_env("creator", &coins(2, "token"));
-        let _res = init(&mut deps, env, msg).unwrap();
-
-        // anyone can increment
-        let env = mock_env("anyone", &coins(2, "token"));
-        let msg = HandleMsg::Increment {};
-        let _res = handle(&mut deps, env, msg).unwrap();
-
-        // should increase counter by 1
-        let res = query(&deps, QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(18, value.count);
-    }
-
-    #[test]
-    fn reset() {
-        let mut deps = mock_dependencies(20, &coins(2, "token"));
-
-        let msg = InitMsg { count: 17 };
-        let env = mock_env("creator", &coins(2, "token"));
-        let _res = init(&mut deps, env, msg).unwrap();
-
-        // not anyone can reset
-        let unauth_env = mock_env("anyone", &coins(2, "token"));
-        let msg = HandleMsg::Reset { count: 5 };
-        let res = handle(&mut deps, unauth_env, msg);
-        match res {
-            Err(StdError::Unauthorized { .. }) => {}
-            _ => panic!("Must return unauthorized error"),
-        }
-
-        // only the original creator can reset the counter
-        let auth_env = mock_env("creator", &coins(2, "token"));
-        let msg = HandleMsg::Reset { count: 5 };
-        let _res = handle(&mut deps, auth_env, msg).unwrap();
-
-        // should now be 5
-        let res = query(&deps, QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(5, value.count);
-    }
+fn query_info<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    to_binary(&QueryAnswer::Info {
+        mint_limit: 0,
+        mint_count: 0,
+    })
 }

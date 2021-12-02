@@ -1,27 +1,58 @@
+use cosmwasm_std::{Binary, Coin, HumanAddr, Uint128};
 use schemars::JsonSchema;
+use secret_toolkit::utils::InitCallback;
 use serde::{Deserialize, Serialize};
+
+use crate::{contract::BLOCK_SIZE, state::SecretContract};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
-    pub count: i32,
+    pub admin: Option<HumanAddr>,
+    pub token_contract: SecretContract,
+    pub nft_contract: SecretContract,
+    pub prng_seed: Binary,
+    pub mint_limit: u32,
+    pub mint_price: Uint128,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
-    Increment {},
-    Reset { count: i32 },
+    Receive {
+        sender: HumanAddr,
+        from: HumanAddr,
+        amount: Uint128,
+        msg: Binary,
+    },
+    MintNfts {
+        count: u32,
+        entropy: String,
+    },
+    StartMint {},
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum HandleAnswer {
+    StartMint { status: ResponseStatus },
+    MintNfts { status: ResponseStatus },
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseStatus {
+    Success,
+    Failure,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    // GetCount returns the current count as a json-encoded number
-    GetCount {},
+    Info {},
 }
 
-// We define a custom struct for each query response
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct CountResponse {
-    pub count: i32,
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryAnswer {
+    Info { mint_limit: u32, mint_count: u32 },
 }

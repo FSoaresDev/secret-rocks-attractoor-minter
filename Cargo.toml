@@ -30,13 +30,19 @@ overflow-checks = true
 default = []
 # for quicker tests, cargo test --lib
 # for more explicit tests, cargo test --features=backtraces
-backtraces = ["cosmwasm-std/backtraces"]
-debug-print = ["cosmwasm-std/debug-print"]
+# backtraces = ["cosmwasm-std/backtraces"]
+# debug-print = ["cosmwasm-std/debug-print"]
 
 [dependencies]
-cosmwasm-schema = { git = "https://github.com/enigmampc/SecretNetwork", tag = "v1.0.4-debug-print" }
-cosmwasm-std = { git = "https://github.com/enigmampc/SecretNetwork", tag = "v1.0.4-debug-print" }
-cosmwasm-storage = { git = "https://github.com/enigmampc/SecretNetwork", tag = "v1.0.4-debug-print" }
+cosmwasm-schema = { git = "https://github.com/enigmampc/SecretNetwork", tag = "v1.0.0" }
+cosmwasm-std = { git = "https://github.com/enigmampc/SecretNetwork", tag = "v1.0.0" }
+cosmwasm-storage = { git = "https://github.com/enigmampc/SecretNetwork", tag = "v1.0.0" }
+secret-toolkit = { git = "https://github.com/enigmampc/secret-toolkit", rev = "6c235a29faa8f5c36555f68932b0f5e56b22d7f8" }
 schemars = "0.7"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 snafu = { version = "0.6.3" }
+rand_chacha = "0.2.2"
+rand_core = { version =  "0.5.1", default-features = false }
+sha2 = "0.9.1"
+rand = "0.7.3"
+base64 = "0.12.3"
