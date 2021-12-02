@@ -46,25 +46,16 @@ secretd q compute tx $TX_HASH
 export devSNIP20_address=$(secretd query compute list-contract-by-code $devSNIP20_code_id | jq -r '.[-1].address')
 echo "devSNIP20 address: '$devSNIP20_address'"
 
-echo "Deploying NFT Collection..."
-export TX_HASH=$(
-  secretd tx compute instantiate $nfts_code_id '{"name":"Secret Rocks Attractoors","symbol":"SRATT", "entropy":"ZW5pZ21hLXJvY2tzCg==","config":{"public_token_supply":true,"public_owner":false,"enable_sealed_metadata":false,"unwrapped_metadata_is_private":false,"minter_may_update_metadata":false,"owner_may_update_metadata": false,"enable_burn": true}}' --label srattrs_$label --from $deployer_name --gas 15000000 -y -b block |
-  jq -r .txhash
-)
-wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
-
-export nfts_address=$(secretd query compute list-contract-by-code $nfts_code_id | jq -r '.[-1].address')
-echo "nft address: '$nfts_address'"
-
 echo "Deploying Minter.."
 export TX_HASH=$(
   secretd tx compute instantiate $minter_code_id " \
   { \
     \"prng_seed\": \"ZW5pZ21hLXJvY2tzCg==\", \
 	  \"token_contract\": { \"address\": \"$devSNIP20_address\", \"contract_hash\": \"$devSNIP20_code_hash\"}, \
-    \"nft_contract\": { \"address\": \"$nfts_address\", \"contract_hash\": \"$nfts_code_hash\"}, \
     \"mint_limit\": 5, \
-    \"mint_price\": \"100\" \
+    \"mint_price\": \"100\", \
+    \"giveaways\": [\"$deployer_address\"], \
+    \"utilities\": [{\"traits\": [{\"trait_type\": \"Utility 1\",\"value\": \"Secret Rock Airdrop\"},{\"trait_type\": \"Utility 2\",\"value\": \"Burning Mechanism\"},{\"trait_type\": \"Utility 3\",\"value\": \"Unknown\"}]},{\"traits\": [{\"trait_type\": \"Utility 1\",\"value\": \"Secret Rock Airdrop\"},{\"trait_type\": \"Utility 2\",\"value\": \"Staking Mechanism\"},{\"trait_type\": \"Utility 3\",\"value\": \"Unknown\"}]}] \
   } \
   " --from $deployer_name --gas 15000000 --label srattrs_minter_$label -b block -y |
   jq -r .txhash
@@ -74,11 +65,29 @@ wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
 export minter_address=$(secretd query compute list-contract-by-code $minter_code_id | jq -r '.[-1].address')
 echo "minter address: '$minter_address'"
 
-echo "Set NFT Minter Contract..."
+echo "Deploying NFT Collection..."
 export TX_HASH=$(
-  secretd tx compute execute $nfts_address '{"set_minters":{"minters": ["'$minter_address'"]}}'  --from $deployer_name -y --gas 1500000 -b block | jq -r .txhash
+  secretd tx compute instantiate $nfts_code_id '{"name":"Secret Rocks Attractoors","symbol":"SRATT", "admin": "'$minter_address'", "entropy":"ZW5pZ21hLXJvY2tzCg==", "royalty_info":{"decimal_places_in_rates": 2, "royalties": [{"recipient": "'$deployer_address'", "rate": 10}]}, "config":{"public_token_supply":true,"public_owner":false,"enable_sealed_metadata":false,"unwrapped_metadata_is_private":false,"minter_may_update_metadata":false,"owner_may_update_metadata": false,"enable_burn": true}}' --label srattrs_$label --from $deployer_name --gas 15000000 -y -b block |
+  jq -r .txhash
 )
 wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
+
+export nfts_address=$(secretd query compute list-contract-by-code $nfts_code_id | jq -r '.[-1].address')
+echo "nft address: '$nfts_address'"
+
+echo "Adding NFT contract to minter"
+secretd tx compute execute $minter_address '{"add_nft_contract":{"contract": {"address": "'$nfts_address'", "contract_hash": "'$nfts_code_hash'"}}}' --from $deployer_name -y --gas 1500000 -b block
+
+echo "Mint giveaways"
+secretd tx compute execute $minter_address '{"mint_giveaways":{}}' --from $deployer_name -y --gas 1500000 -b block
+
+echo "Mints"
+
+
+
+
+secretd q compute query $nfts_address '{"num_tokens":{}}' | jq .
+secretd q compute query $nfts_address '{"nft_info":{"token_id":"0"}}' | jq .
 
 
 echo "=========================================================================="
