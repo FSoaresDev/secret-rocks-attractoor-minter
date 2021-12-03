@@ -13,8 +13,3 @@ compile: # CTRL+C to stop
 setup-devchain: # CTRL+C to stop
 	make compile
 	bash devChain/devChain_setup.sh
-
-.PHONY: deploy-testnet
-deploy-testnet: # CTRL+C to stop
-	make compile
-	bash testnet/deploy.sh

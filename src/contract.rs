@@ -4,10 +4,11 @@ use cosmwasm_std::{
 };
 use rand::prelude::SliceRandom;
 use rand::Rng;
+use secret_toolkit::snip20::{send_msg, transfer_msg};
 
 use crate::msg::{
-    Extension, HandleAnswer, MediaFile, Metadata, Mint, NftsHandleMsg, QueryAnswer, ResponseStatus,
-    Trait,
+    Authentication, Extension, HandleAnswer, MediaFile, Metadata, Mint, NftsHandleMsg, QueryAnswer,
+    ResponseStatus, Trait,
 };
 use crate::state::{load, save, SecretContract, Utilities};
 use crate::{
@@ -148,8 +149,8 @@ pub fn mint_giveaways<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
 ) -> StdResult<HandleResponse> {
-    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
-    let mut config: Config = config_store.load(CONFIG_KEY)?;
+    let config_store = TypedStore::attach(&deps.storage);
+    let config: Config = config_store.load(CONFIG_KEY)?;
     let additional_entropy: String = load(&deps.storage, &ADDITIONAL_ENTROPY)?;
     let mut token_data_list: Vec<u32> = load(&deps.storage, &SECRET_NUMBERS)?;
 
@@ -165,7 +166,7 @@ pub fn mint_giveaways<S: Storage, A: Api, Q: Querier>(
         )));
     }
 
-    let nft_contract = config.nft_contract.unwrap();
+    let nft_contract = config.nft_contract.clone().unwrap();
 
     // query nft contract to check the current total supply
     let nft_current_count_response = secret_toolkit::snip721::num_tokens_query(
@@ -182,7 +183,7 @@ pub fn mint_giveaways<S: Storage, A: Api, Q: Querier>(
 
     let mints_available = config.mint_limit - nft_current_count_response.count;
 
-    if mints_available < nft_current_count_response.count {
+    if mints_available < config.giveaways_to_send.len() as u32 {
         return Err(StdError::generic_err(format!(
             "Giveaway mints surpass the mint limit!"
         )));
@@ -204,12 +205,18 @@ pub fn mint_giveaways<S: Storage, A: Api, Q: Querier>(
     for giveaway in config.giveaways_to_send {
         mints.push(_mint(
             deps,
-            giveaway,
+            &giveaway,
             &mut rng,
             &mut token_data_list,
             &config.utilities,
         ));
     }
+
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut config: Config = config_store.load(CONFIG_KEY)?;
+
+    config.giveaways_to_send = vec![];
+    config_store.store(CONFIG_KEY, &config)?;
 
     let mints_msg = NftsHandleMsg::BatchMintNft {
         mints,
@@ -315,15 +322,135 @@ pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
     count: u32,
     entropy: String,
 ) -> StdResult<HandleResponse> {
-    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
-    let mut config: Config = config_store.load(CONFIG_KEY)?;
+    let config_store = TypedStore::attach(&deps.storage);
+    let config: Config = config_store.load(CONFIG_KEY)?;
+    let mut token_data_list: Vec<u32> = load(&deps.storage, &SECRET_NUMBERS)?;
 
     if config.mint_started != true {
         return Err(StdError::generic_err(format!("Mint has not started yet!")));
     }
 
+    if config.nft_contract.is_none() {
+        return Err(StdError::generic_err(format!("Nft needs to be added!")));
+    }
+
+    let nft_contract = config.nft_contract.unwrap().clone();
+
+    // Check if sent amount is correct
+    let total_amount_expected = config.mint_price.u128() * (count as u128);
+
+    if total_amount_expected != amount.u128() {
+        return Err(StdError::generic_err(format!(
+            "Incorrect amount of snip20 tokens received {:?} != {:?}",
+            amount.u128(),
+            total_amount_expected
+        )));
+    }
+
+    // query nft contract to check the current total supply
+    let nft_current_count_response = secret_toolkit::snip721::num_tokens_query(
+        &deps.querier,
+        None,
+        BLOCK_SIZE,
+        nft_contract.contract_hash.clone(),
+        nft_contract.address.clone(),
+    )?;
+
+    if nft_current_count_response.count == config.mint_limit {
+        return Err(StdError::generic_err(format!("No more mints available!")));
+    }
+
+    let mints_available = config.mint_limit - nft_current_count_response.count;
+
+    if mints_available < count {
+        return Err(StdError::generic_err(format!(
+            "Not sufficient available mints to satisfy this request!"
+        )));
+    }
+
+    // add entropy provided by the user to the additional entropy
+    let mut new_entropy = entropy.clone();
+    if new_entropy.len() > 20 {
+        new_entropy = new_entropy[0..20].to_string();
+    } else if new_entropy.len() == 0 {
+        new_entropy = "0".to_string();
+    }
+
+    let mut additional_entropy: String = load(&deps.storage, &ADDITIONAL_ENTROPY)?;
+
+    // Randomize the length that will be added with current and new entropy
+    // this will prevent predicting results in a feasible way even with someone knowing the seed
+    let mut hasher = Sha256::new();
+    vec![
+        additional_entropy.as_bytes(),
+        new_entropy.as_bytes(),
+        &config.prng_seed,
+        env.block.time.to_string().as_bytes(),
+    ]
+    .iter()
+    .for_each(|el| hasher.update(el));
+    let seed: [u8; 32] = hasher.finalize().into();
+    let mut rng = ChaChaRng::from_seed(seed);
+
+    let new_entropy_len: usize = rng.gen_range(0, new_entropy.len());
+
+    if additional_entropy.len() >= 1000 {
+        additional_entropy = additional_entropy[new_entropy_len..additional_entropy.len()]
+            .to_string()
+            + &new_entropy[0..new_entropy_len];
+    } else {
+        additional_entropy = additional_entropy + &new_entropy[0..new_entropy_len];
+    }
+
+    save(&mut deps.storage, ADDITIONAL_ENTROPY, &additional_entropy)?;
+
+    let mut mints: Vec<Mint> = vec![];
+
+    for _ in 1..=count {
+        mints.push(_mint(
+            deps,
+            &from,
+            &mut rng,
+            &mut token_data_list,
+            &config.utilities,
+        ));
+    }
+
+    let mints_msg = NftsHandleMsg::BatchMintNft {
+        mints,
+        padding: None,
+    };
+
+    let mints_cosmos_msg =
+        mints_msg.to_cosmos_msg(nft_contract.contract_hash, nft_contract.address, None)?;
+
+    let mut messages = vec![mints_cosmos_msg];
+
+    // mint revenue
+    let wallet1_revenue = amount.multiply_ratio(Uint128(15 as u128), Uint128(1000));
+
+    messages.push(transfer_msg(
+        HumanAddr("secret1q7kkhvkwzlj0dv3p3nk2ewfgvxs22u6hav3a65".to_string()),
+        wallet1_revenue,
+        None,
+        BLOCK_SIZE,
+        config.token_contract.contract_hash.clone(),
+        config.token_contract.address.clone(),
+    )?);
+
+    let wallet2_revenue = amount.multiply_ratio(Uint128(985 as u128), Uint128(1000));
+
+    messages.push(transfer_msg(
+        HumanAddr("secret1r4gka3q0zcner6vg629e887a6wejpy00djwlk6".to_string()),
+        wallet2_revenue,
+        None,
+        BLOCK_SIZE,
+        config.token_contract.contract_hash.clone(),
+        config.token_contract.address.clone(),
+    )?);
+
     return Ok(HandleResponse {
-        messages: vec![],
+        messages,
         log: vec![],
         data: Some(to_binary(&HandleAnswer::MintNfts {
             status: ResponseStatus::Success,
@@ -333,7 +460,7 @@ pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
 
 fn _mint<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    owner: HumanAddr,
+    owner: &HumanAddr,
     rng: &mut ChaCha20Rng,
     secret_numbers_list: &mut Vec<u32>,
     utilities: &Vec<Utilities>,
@@ -346,7 +473,7 @@ fn _mint<S: Storage, A: Api, Q: Querier>(
 
     return Mint {
         token_id: None,
-        owner: Some(owner),
+        owner: Some(owner.clone()),
         public_metadata: Some(Metadata {
             extension: Some(Extension {
                 image: None,
@@ -361,7 +488,10 @@ fn _mint<S: Storage, A: Api, Q: Querier>(
                 media: Some(vec![MediaFile {
                     file_type: Some("image".to_string()),
                     extension: Some("gif".to_string()),
-                    authentication: None,
+                    authentication: Some(Authentication {
+                        key: Some("".to_string()),
+                        user: Some("".to_string()),
+                    }),
                     url: "https://ipfs.io/ipfs/QmcbALnjvhWekHuzrTZA3r5MmU8bthHiJ5xne2n8Uw96Ck"
                         .to_string(),
                 }]),
@@ -388,7 +518,10 @@ fn _mint<S: Storage, A: Api, Q: Querier>(
                 media: Some(vec![MediaFile {
                     file_type: Some("image".to_string()),
                     extension: Some("gif".to_string()),
-                    authentication: None,
+                    authentication: Some(Authentication {
+                        key: Some("".to_string()),
+                        user: Some("".to_string()),
+                    }),
                     url: "https://ipfs.io/ipfs/QmcbALnjvhWekHuzrTZA3r5MmU8bthHiJ5xne2n8Uw96Ck"
                         .to_string(),
                 }]),

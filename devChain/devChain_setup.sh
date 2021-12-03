@@ -67,7 +67,7 @@ echo "minter address: '$minter_address'"
 
 echo "Deploying NFT Collection..."
 export TX_HASH=$(
-  secretd tx compute instantiate $nfts_code_id '{"name":"Secret Rocks Attractoors","symbol":"SRATT", "admin": "'$minter_address'", "entropy":"ZW5pZ21hLXJvY2tzCg==", "royalty_info":{"decimal_places_in_rates": 2, "royalties": [{"recipient": "'$deployer_address'", "rate": 10}]}, "config":{"public_token_supply":true,"public_owner":false,"enable_sealed_metadata":false,"unwrapped_metadata_is_private":false,"minter_may_update_metadata":false,"owner_may_update_metadata": false,"enable_burn": true}}' --label srattrs_$label --from $deployer_name --gas 15000000 -y -b block |
+  secretd tx compute instantiate $nfts_code_id '{"name":"Secret Rocks Attractoors","symbol":"SRATT", "admin": "'$minter_address'", "entropy":"ZW5pZ21hLXJvY2tzCg==", "royalty_info":{"decimal_places_in_rates": 2, "royalties": [{"recipient": "secret1r4gka3q0zcner6vg629e887a6wejpy00djwlk6", "rate": 10}]}, "config":{"public_token_supply":true,"public_owner":false,"enable_sealed_metadata":false,"unwrapped_metadata_is_private":false,"minter_may_update_metadata":false,"owner_may_update_metadata": false,"enable_burn": true}}' --label srattrs_$label --from $deployer_name --gas 15000000 -y -b block |
   jq -r .txhash
 )
 wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
@@ -81,14 +81,15 @@ secretd tx compute execute $minter_address '{"add_nft_contract":{"contract": {"a
 echo "Mint giveaways"
 secretd tx compute execute $minter_address '{"mint_giveaways":{}}' --from $deployer_name -y --gas 1500000 -b block
 
+echo "Enable Mints"
+secretd tx compute execute $minter_address '{"start_mint":{}}' --from $deployer_name -y --gas 1500000 -b block
+
 echo "Mints"
-
-
-
+msg=$(base64 -w 0 <<<'{"mint_nfts": {"count": 2, "entropy": "'"$RANDOM"'"}}')
+secretd tx compute execute $devSNIP20_address  '{"send":{"recipient": "'$minter_address'", "amount": "200", "msg": "'"$msg"'"}}' --from $deployer_name -y --gas 1500000 -b block
 
 secretd q compute query $nfts_address '{"num_tokens":{}}' | jq .
 secretd q compute query $nfts_address '{"nft_info":{"token_id":"0"}}' | jq .
-
 
 echo "=========================================================================="
 echo "=== UserA: $deployer_address"
