@@ -15,8 +15,8 @@ pub struct InitMsg {
     pub prng_seed: Binary,
     pub mint_limit: u32,
     pub mint_price: Uint128,
+    pub mint_amount_cap_per_tx: u32,
     pub giveaways: Vec<HumanAddr>,
-    // pub payment_wallet: HumanAddr,
     pub utilities: Vec<Utilities>,
 }
 
@@ -63,7 +63,15 @@ pub enum QueryMsg {
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryAnswer {
-    Info { mint_limit: u32, mint_count: u32 },
+    Info {
+        nft_contract: SecretContract,
+        mint_amount_cap_per_tx: u32,
+        max_total_supply: u32,
+        mint_current_count: u32,
+        mint_current_left: u32,
+        utilities: Vec<Utilities>,
+        minted_current_utilities: Vec<u32>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

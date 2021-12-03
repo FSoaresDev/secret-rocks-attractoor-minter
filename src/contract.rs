@@ -54,6 +54,8 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             mint_limit: msg.mint_limit.clone(),
             giveaways_to_send: msg.giveaways.clone(),
             utilities: msg.utilities.clone(),
+            mint_amount_cap_per_tx: msg.mint_amount_cap_per_tx.clone(),
+            minted_current_utilities: vec![0; msg.utilities.len()],
         },
     )?;
 
@@ -201,6 +203,7 @@ pub fn mint_giveaways<S: Storage, A: Api, Q: Querier>(
     let mut rng = ChaChaRng::from_seed(seed);
 
     let mut mints: Vec<Mint> = vec![];
+    let mut minted_current_utilities = config.minted_current_utilities.clone();
 
     for giveaway in config.giveaways_to_send {
         mints.push(_mint(
@@ -208,6 +211,7 @@ pub fn mint_giveaways<S: Storage, A: Api, Q: Querier>(
             &giveaway,
             &mut rng,
             &mut token_data_list,
+            &mut minted_current_utilities,
             &config.utilities,
         ));
     }
@@ -216,6 +220,7 @@ pub fn mint_giveaways<S: Storage, A: Api, Q: Querier>(
     let mut config: Config = config_store.load(CONFIG_KEY)?;
 
     config.giveaways_to_send = vec![];
+    config.minted_current_utilities = minted_current_utilities;
     config_store.store(CONFIG_KEY, &config)?;
 
     let mints_msg = NftsHandleMsg::BatchMintNft {
@@ -326,6 +331,13 @@ pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
     let config: Config = config_store.load(CONFIG_KEY)?;
     let mut token_data_list: Vec<u32> = load(&deps.storage, &SECRET_NUMBERS)?;
 
+    if count > config.mint_amount_cap_per_tx {
+        return Err(StdError::generic_err(format!(
+            "Only {:?} tokens can be minted at the same time!",
+            config.mint_amount_cap_per_tx
+        )));
+    }
+
     if config.mint_started != true {
         return Err(StdError::generic_err(format!("Mint has not started yet!")));
     }
@@ -405,6 +417,7 @@ pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
     save(&mut deps.storage, ADDITIONAL_ENTROPY, &additional_entropy)?;
 
     let mut mints: Vec<Mint> = vec![];
+    let mut minted_current_utilities = config.minted_current_utilities.clone();
 
     for _ in 1..=count {
         mints.push(_mint(
@@ -412,9 +425,17 @@ pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
             &from,
             &mut rng,
             &mut token_data_list,
+            &mut minted_current_utilities,
             &config.utilities,
         ));
     }
+
+    // update minted_current_utilities
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut config: Config = config_store.load(CONFIG_KEY)?;
+
+    config.minted_current_utilities = minted_current_utilities;
+    config_store.store(CONFIG_KEY, &config)?;
 
     let mints_msg = NftsHandleMsg::BatchMintNft {
         mints,
@@ -463,10 +484,12 @@ fn _mint<S: Storage, A: Api, Q: Querier>(
     owner: &HumanAddr,
     rng: &mut ChaCha20Rng,
     secret_numbers_list: &mut Vec<u32>,
+    minted_current_utilities: &mut Vec<u32>,
     utilities: &Vec<Utilities>,
 ) -> Mint {
     let utilities_index: usize = rng.gen_range(0, utilities.len());
     let utility = utilities[utilities_index].clone();
+    minted_current_utilities[utilities_index] = minted_current_utilities[utilities_index] + 1;
 
     let secret_number_index: usize = rng.gen_range(0, secret_numbers_list.len());
     let secret_number = secret_numbers_list.swap_remove(secret_number_index);
@@ -545,8 +568,25 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
 }
 
 fn query_info<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    let config_store = TypedStore::attach(&deps.storage);
+    let config: Config = config_store.load(CONFIG_KEY)?;
+    let nft_contract = config.nft_contract.unwrap().clone();
+
+    let nft_current_count_response = secret_toolkit::snip721::num_tokens_query(
+        &deps.querier,
+        None,
+        BLOCK_SIZE,
+        nft_contract.contract_hash.clone(),
+        nft_contract.address.clone(),
+    )?;
+
     to_binary(&QueryAnswer::Info {
-        mint_limit: 0,
-        mint_count: 0,
+        nft_contract,
+        mint_amount_cap_per_tx: config.mint_amount_cap_per_tx,
+        max_total_supply: config.mint_limit,
+        mint_current_count: nft_current_count_response.count,
+        mint_current_left: config.mint_limit - nft_current_count_response.count,
+        utilities: config.utilities,
+        minted_current_utilities: config.minted_current_utilities,
     })
 }

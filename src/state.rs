@@ -24,6 +24,8 @@ pub struct Config {
     pub mint_limit: u32,
     pub giveaways_to_send: Vec<HumanAddr>,
     pub utilities: Vec<Utilities>,
+    pub mint_amount_cap_per_tx: u32,
+    pub minted_current_utilities: Vec<u32>,
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone, JsonSchema)]
