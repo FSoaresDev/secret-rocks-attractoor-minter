@@ -110,6 +110,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::AddNftContract { contract } => add_nft_contract(deps, env, contract),
         HandleMsg::MintGiveaways {} => mint_giveaways(deps, env),
         HandleMsg::StartMint {} => start_mint(deps, env),
+        HandleMsg::StopMint {} => stop_mint(deps, env),
+        HandleMsg::ChangeAdmin { admin } => change_admin(deps, env, admin),
         _ => Err(StdError::generic_err("action not found!")),
     }
 }
@@ -141,7 +143,7 @@ pub fn add_nft_contract<S: Storage, A: Api, Q: Querier>(
     return Ok(HandleResponse {
         messages: vec![],
         log: vec![],
-        data: Some(to_binary(&HandleAnswer::StartMint {
+        data: Some(to_binary(&HandleAnswer::AddNftContract {
             status: ResponseStatus::Success,
         })?),
     });
@@ -166,6 +168,10 @@ pub fn mint_giveaways<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err(format!(
             "A NFT contract should be added before this action"
         )));
+    }
+
+    if config.giveaways_to_send.len() == 0 {
+        return Err(StdError::generic_err(format!("No more giveaways to mint!")));
     }
 
     let nft_contract = config.nft_contract.clone().unwrap();
@@ -234,7 +240,7 @@ pub fn mint_giveaways<S: Storage, A: Api, Q: Querier>(
     return Ok(HandleResponse {
         messages: vec![mints_cosmos_msg],
         log: vec![],
-        data: Some(to_binary(&HandleAnswer::StartMint {
+        data: Some(to_binary(&HandleAnswer::MintGiveaways {
             status: ResponseStatus::Success,
         })?),
     });
@@ -292,7 +298,34 @@ pub fn stop_mint<S: Storage, A: Api, Q: Querier>(
     return Ok(HandleResponse {
         messages: vec![],
         log: vec![],
-        data: Some(to_binary(&HandleAnswer::StartMint {
+        data: Some(to_binary(&HandleAnswer::StopMint {
+            status: ResponseStatus::Success,
+        })?),
+    });
+}
+
+pub fn change_admin<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    admin: HumanAddr,
+) -> StdResult<HandleResponse> {
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut config: Config = config_store.load(CONFIG_KEY)?;
+
+    if env.message.sender != config.admin {
+        return Err(StdError::generic_err(format!(
+            "Only admin can execute this action!"
+        )));
+    }
+
+    config.admin = admin;
+
+    config_store.store(CONFIG_KEY, &config)?;
+
+    return Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::ChangeAdmin {
             status: ResponseStatus::Success,
         })?),
     });
@@ -338,10 +371,6 @@ pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
         )));
     }
 
-    if config.mint_started != true {
-        return Err(StdError::generic_err(format!("Mint has not started yet!")));
-    }
-
     if config.nft_contract.is_none() {
         return Err(StdError::generic_err(format!("Nft needs to be added!")));
     }
@@ -370,6 +399,10 @@ pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
 
     if nft_current_count_response.count == config.mint_limit {
         return Err(StdError::generic_err(format!("No more mints available!")));
+    }
+
+    if config.mint_started != true {
+        return Err(StdError::generic_err(format!("Mint has not started yet!")));
     }
 
     let mints_available = config.mint_limit - nft_current_count_response.count;
@@ -451,7 +484,7 @@ pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
     let wallet1_revenue = amount.multiply_ratio(Uint128(15 as u128), Uint128(1000));
 
     messages.push(transfer_msg(
-        HumanAddr("secret1q7kkhvkwzlj0dv3p3nk2ewfgvxs22u6hav3a65".to_string()),
+        HumanAddr("secret1m2chwqd5w9eje6ykrw0s8tc6p4s4t089g27j9p".to_string()),
         wallet1_revenue,
         None,
         BLOCK_SIZE,
@@ -583,6 +616,8 @@ fn query_info<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResu
     to_binary(&QueryAnswer::Info {
         nft_contract,
         mint_amount_cap_per_tx: config.mint_amount_cap_per_tx,
+        mint_price: config.mint_price,
+        mint_started: config.mint_started,
         max_total_supply: config.mint_limit,
         mint_current_count: nft_current_count_response.count,
         mint_current_left: config.mint_limit - nft_current_count_response.count,

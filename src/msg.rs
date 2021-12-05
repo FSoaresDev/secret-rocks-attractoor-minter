@@ -34,6 +34,10 @@ pub enum HandleMsg {
         entropy: String,
     },
     StartMint {},
+    StopMint {},
+    ChangeAdmin {
+        admin: HumanAddr,
+    },
     AddNftContract {
         contract: SecretContract,
     },
@@ -43,8 +47,12 @@ pub enum HandleMsg {
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleAnswer {
+    AddNftContract { status: ResponseStatus },
+    MintGiveaways { status: ResponseStatus },
     StartMint { status: ResponseStatus },
+    StopMint { status: ResponseStatus },
     MintNfts { status: ResponseStatus },
+    ChangeAdmin { status: ResponseStatus },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -65,6 +73,8 @@ pub enum QueryMsg {
 pub enum QueryAnswer {
     Info {
         nft_contract: SecretContract,
+        mint_price: Uint128,
+        mint_started: bool,
         mint_amount_cap_per_tx: u32,
         max_total_supply: u32,
         mint_current_count: u32,
