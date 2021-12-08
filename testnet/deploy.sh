@@ -15,12 +15,12 @@ nft_code_id=136
 nft_code_hash=414974411AA86579DF6E3BBF2B3717E503E60E4AC3C09FC3D76C87726070ADA6
 
 #MINTER
-#deployed=$(secretcli tx compute store "../target/wasm32-unknown-unknown/release/secret_rocks_attractoor_minter.wasm" --from test1 --gas 2500000 -b block -y)
+#deployed=$(secretcli tx compute store "../target/wasm32-unknown-unknown/release/secret_rocks_attractoor_minter.wasm" --from test1 --gas 2000000 -b block -y)
 #code_id=$(secretcli query compute list-code | jq '.[-1]."id"')
 #code_hash=$(secretcli query compute list-code | jq '.[-1]."data_hash"')
 #echo $code_id $code_hash
-minter_code_id=207
-minter_code_hash=0EF1DAE10C11133A558517C5B39878F8B171F7C74021036ECBAD9B0C83B5478C
+minter_code_id=278
+minter_code_hash=14FB3EDDF6524698D79515E9A1B9F67677D4746E77C65C68C27FB5C8B8E3785D
 
 owner_address=secret1r4gka3q0zcner6vg629e887a6wejpy00djwlk6
 secretcli tx compute instantiate $minter_code_id " \
@@ -33,7 +33,7 @@ secretcli tx compute instantiate $minter_code_id " \
     \"giveaways\": [\"$owner_address\",\"$owner_address\",\"$owner_address\",\"$owner_address\",\"$owner_address\",\"$owner_address\",\"$owner_address\",\"$owner_address\"], \
     \"utilities\": [{\"traits\": [{\"trait_type\": \"Utility 1\",\"value\": \"Secret Rock Airdrop\"},{\"trait_type\": \"Utility 2\",\"value\": \"Burning Mechanism\"},{\"trait_type\": \"Utility 3\",\"value\": \"Unknown\"}]},{\"traits\": [{\"trait_type\": \"Utility 1\",\"value\": \"Secret Rock Airdrop\"},{\"trait_type\": \"Utility 2\",\"value\": \"Staking Mechanism\"},{\"trait_type\": \"Utility 3\",\"value\": \"Unknown\"}]}] \
   } \
-  " --from $deployer_name --gas 65000 --label "Secret Rocks Attractoor Minter $label" -b block -y |
+  " --from $deployer_name --gas 270000 --label "Secret Rocks Attractoor Minter $label" -b block -y |
   jq .
 
 mint_address=$(secretcli query compute list-contract-by-code $minter_code_id | jq -r '.[-1].address')
@@ -47,10 +47,10 @@ echo "Adding NFT contract to minter"
 secretcli tx compute execute $mint_address '{"add_nft_contract":{"contract": {"address": "'$nft_address'", "contract_hash": "'$nft_code_hash'"}}}' --from $deployer_name -y --gas 35000 -b block
 
 echo "Mint giveaways"
-secretcli tx compute execute $mint_address '{"mint_giveaways":{}}' --from $deployer_name -y --gas 157500 -b block
+secretcli tx compute execute $mint_address '{"mint_giveaways":{}}' --from $deployer_name -y --gas 200000 -b block
 
 echo "Enable Mints"
-secretcli tx compute execute $mint_address '{"start_mint":{}}' --from $deployer_name -y --gas 30000 -b block
+secretcli tx compute execute $mint_address '{"start_mint":{}}' --from $deployer_name -y --gas 28000 -b block
 
 echo "Mints"
 #msg=$(base64 -w 0 <<<'{"mint_nfts": {"count": 50, "entropy": "'"$RANDOM"'"}}')

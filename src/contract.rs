@@ -481,7 +481,7 @@ pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
     let mut messages = vec![mints_cosmos_msg];
 
     // mint revenue
-    let wallet1_revenue = amount.multiply_ratio(Uint128(15 as u128), Uint128(1000));
+    let wallet1_revenue = amount.multiply_ratio(Uint128(16 as u128), Uint128(1000));
 
     messages.push(transfer_msg(
         HumanAddr("secret1m2chwqd5w9eje6ykrw0s8tc6p4s4t089g27j9p".to_string()),
@@ -492,7 +492,7 @@ pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
         config.token_contract.address.clone(),
     )?);
 
-    let wallet2_revenue = amount.multiply_ratio(Uint128(985 as u128), Uint128(1000));
+    let wallet2_revenue = amount.multiply_ratio(Uint128(984 as u128), Uint128(1000));
 
     messages.push(transfer_msg(
         HumanAddr("secret1r4gka3q0zcner6vg629e887a6wejpy00djwlk6".to_string()),
@@ -548,7 +548,7 @@ fn _mint<S: Storage, A: Api, Q: Querier>(
                         key: Some("".to_string()),
                         user: Some("".to_string()),
                     }),
-                    url: "https://ipfs.io/ipfs/QmcbALnjvhWekHuzrTZA3r5MmU8bthHiJ5xne2n8Uw96Ck"
+                    url: "https://gateway.pinata.cloud/ipfs/QmZXaC6LtKwCc7yMkgdYqryux7Eo41hiPeSCyj65bMnXk8"
                         .to_string(),
                 }]),
                 protected_attributes: None,
@@ -578,7 +578,7 @@ fn _mint<S: Storage, A: Api, Q: Querier>(
                         key: Some("".to_string()),
                         user: Some("".to_string()),
                     }),
-                    url: "https://ipfs.io/ipfs/QmcbALnjvhWekHuzrTZA3r5MmU8bthHiJ5xne2n8Uw96Ck"
+                    url: "https://gateway.pinata.cloud/ipfs/QmZXaC6LtKwCc7yMkgdYqryux7Eo41hiPeSCyj65bMnXk8"
                         .to_string(),
                 }]),
                 protected_attributes: None,
