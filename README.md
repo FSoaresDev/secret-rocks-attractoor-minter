@@ -1,7 +1,7 @@
 Pulsar 1 Testnet:
 
-Minter Address: secret13ca2lrue7pdzuwygsjv9dzwhmsmxys42zxcjya
-SNIP721 Address: secret14879t6mjnhvmc863679e5hgl22dlx5e6j929xl
+Minter Address: secret1lv7ph6v02p68sa43tmfwtvnkgy9vmlad38cekg
+SNIP721 Address: secret1cte9aq8kjn60hw5ny2sy568q27vghg5wxuea3g
 sSCRT Address: secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg
 
 Mint NFT:

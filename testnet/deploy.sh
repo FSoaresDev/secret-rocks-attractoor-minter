@@ -19,8 +19,8 @@ nft_code_hash=414974411AA86579DF6E3BBF2B3717E503E60E4AC3C09FC3D76C87726070ADA6
 #code_id=$(secretcli query compute list-code | jq '.[-1]."id"')
 #code_hash=$(secretcli query compute list-code | jq '.[-1]."data_hash"')
 #echo $code_id $code_hash
-minter_code_id=278
-minter_code_hash=14FB3EDDF6524698D79515E9A1B9F67677D4746E77C65C68C27FB5C8B8E3785D
+minter_code_id=326
+minter_code_hash=968EB6DCDEA1F7F403FA656A9E847BE5B568C074E943D92764C4E2C834079591
 
 owner_address=secret1r4gka3q0zcner6vg629e887a6wejpy00djwlk6
 secretcli tx compute instantiate $minter_code_id " \
