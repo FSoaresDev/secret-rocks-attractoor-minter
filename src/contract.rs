@@ -371,6 +371,10 @@ pub fn mint_nfts<S: Storage, A: Api, Q: Querier>(
         )));
     }
 
+    if count <= 0 {
+        return Err(StdError::generic_err(format!("Invalid amount of mints!")));
+    }
+
     if config.nft_contract.is_none() {
         return Err(StdError::generic_err(format!("Nft needs to be added!")));
     }

@@ -19,8 +19,8 @@ nft_code_hash=414974411AA86579DF6E3BBF2B3717E503E60E4AC3C09FC3D76C87726070ADA6
 #code_id=$(secretcli query compute list-code | jq '.[-1]."id"')
 #code_hash=$(secretcli query compute list-code | jq '.[-1]."data_hash"')
 #echo $code_id $code_hash
-minter_code_id=326
-minter_code_hash=968EB6DCDEA1F7F403FA656A9E847BE5B568C074E943D92764C4E2C834079591
+minter_code_id=351
+minter_code_hash=177B34037F1BAD937FF38D8416A005CC510A881AC471EA53099DB5A228238253
 
 owner_address=secret1r4gka3q0zcner6vg629e887a6wejpy00djwlk6
 secretcli tx compute instantiate $minter_code_id " \
@@ -63,3 +63,4 @@ echo "=================================="
 
 #secretcli q compute query secret1zt0u5psm4m5y93wsqm6mad5yql9rmx7s20cctc '{"num_tokens":{}}' | jq .
 #secretcli q compute query secret1slh9s2nh3tfx9ugd08u04atrsul9andk7gyx80 '{"info":{}}' | jq .
+#secretcli tx compute execute secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg '{"deposit": {}}' --amount 10000000uscrt --from test1 -y --gas 35000 -b block
