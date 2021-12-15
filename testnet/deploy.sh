@@ -64,3 +64,9 @@ echo "=================================="
 #secretcli q compute query secret1zt0u5psm4m5y93wsqm6mad5yql9rmx7s20cctc '{"num_tokens":{}}' | jq .
 #secretcli q compute query secret1slh9s2nh3tfx9ugd08u04atrsul9andk7gyx80 '{"info":{}}' | jq .
 #secretcli tx compute execute secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg '{"deposit": {}}' --amount 10000000uscrt --from test1 -y --gas 35000 -b block
+
+
+secretcli tx compute execute secret136kk6q75g9xly7jqufpaue56zc0nptp2ehsa54 '{"start_mint":{}}' --from test1 -y --gas 28000 -b block
+secretcli tx compute execute secret136kk6q75g9xly7jqufpaue56zc0nptp2ehsa54 '{"stop_mint":{}}' --from test1 -y --gas 28000 -b block
+
+secretcli tx compute execute secret136kk6q75g9xly7jqufpaue56zc0nptp2ehsa54 '{"change_admin":{"admin": "secret1mdz5rze0xfws4gjl8pw38qnfe77p276qnm82f8"}}' --from test1 -y --gas 28000 -b block
